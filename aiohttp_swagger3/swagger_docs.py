@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import Dict, Optional, Union
 
 import yaml
-from aiohttp import web
+from aiohttp import web, hdrs
 from aiohttp.abc import AbstractView
 from openapi_spec_validator import validate_v3_spec
 
@@ -52,16 +52,32 @@ class SwaggerDocs(Swagger):
         name: Optional[str] = None,
         expect_handler: Optional[_ExpectHandler] = None,
     ) -> web.AbstractRoute:
-        if handler.__doc__ and "---" in handler.__doc__:
-            *_, spec = handler.__doc__.split("---")
-            method_spec = yaml.safe_load(spec)
-            method_lower = method.lower()
-            self.spec["paths"][path][method_lower] = method_spec
-            validate_v3_spec(self.spec)
-            route = SwaggerRoute(method_lower, path, handler, swagger=self)
-            self._app[_SWAGGER_SPECIFICATION] = self.spec
-            handler = functools.partial(self._handle_swagger_call, route)
+        if method == hdrs.METH_ANY and issubclass(handler, web.View):
+            for meth in hdrs.METH_ALL:
+                f = getattr(handler, meth.lower(), None)
+                if callable(f):
+                    self.document_route(meth, path, f)
+        else:
+            self.document_route(method, path, handler)
 
         return self._app.router.add_route(
             method, path, handler, name=name, expect_handler=expect_handler
         )
+
+    def document_route(
+        self,
+        method: str,
+        path: str,
+        handler: Union[_WebHandler, AbstractView],
+    ):
+        if not (handler.__doc__ and "---" in handler.__doc__):
+            return
+
+        *_, spec = handler.__doc__.split("---")
+        method_spec = yaml.safe_load(spec)
+        method_lower = method.lower()
+        self.spec["paths"][path][method_lower] = method_spec
+        validate_v3_spec(self.spec)
+        route = SwaggerRoute(method_lower, path, handler, swagger=self)
+        self._app[_SWAGGER_SPECIFICATION] = self.spec
+        handler = functools.partial(self._handle_swagger_call, route)
