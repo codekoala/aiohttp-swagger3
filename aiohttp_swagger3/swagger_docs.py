@@ -28,11 +28,13 @@ class SwaggerDocs(Swagger):
         version: str = "1.0.0",
         description: Optional[str] = None,
         components: Optional[str] = None,
+        base_path: str = "/",
     ) -> None:
         spec: Dict = {
             "openapi": "3.0.0",
             "info": {"title": title, "version": version},
             "paths": defaultdict(lambda: defaultdict(dict)),
+            "servers": [{"url": base_path}],
         }
         if description is not None:
             spec["info"]["description"] = description
